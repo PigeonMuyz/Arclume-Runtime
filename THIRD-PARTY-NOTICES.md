@@ -8,9 +8,12 @@ do not commit an extracted Wine worktree or a prebuilt runtime archive here.
 separate from the Wine and CrossOver source versions in
 `sources/WINE_SOURCE.lock`.
 
-A private GitHub repository is an internal development and CI boundary only.
-If a runtime or an App containing it is distributed to another person, ship the
-corresponding source and license notices required by Wine and every bundled
-component. In particular, verify redistribution rights for Apple Game Porting
-Toolkit/D3DMetal, DXVK/DXMT, Wine Mono, fonts, and optional NVIDIA payloads
-before publishing a binary release.
+Every public Runtime Release must link its exact source tag, source lock,
+patches, SHA-256-bound manifest and the notices required by Wine and every
+bundled component. A Runtime archive must not be published by itself without
+that release record.
+
+Apple Game Porting Toolkit/D3DMetal components, when used by an App release,
+retain Apple’s applicable terms. They are not licensed under this repository’s
+GPL and are not represented as Arclume open source. DXVK, DXMT, Wine Mono,
+fonts and optional NVIDIA payloads retain their respective upstream terms.
