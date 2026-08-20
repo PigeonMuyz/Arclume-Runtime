@@ -1,0 +1,49 @@
+# Arclume Runtime
+
+The private build repository for the Arclume Wine runtime. It is intentionally
+separate from the Arclume macOS app repository.
+
+## Ownership boundary
+
+| Repository | Owns |
+| --- | --- |
+| `PigeonMuyz/Arclume` | App UI, Runtime Manager, runtime selection, prefixes, game integration, and the runtime selected for an App release. |
+| `PigeonMuyz/Arclume-Runtime` | Wine source lock, patches, reproducible build scripts, product runtime identity, generated manifest, and candidate runtime artifacts. |
+
+The App never builds Wine. It consumes a verified runtime archive and its
+generated manifest. GitHub Private is the source/CI system; it is not a
+user-facing runtime download service. App releases continue to embed the
+tested runtime until a separately authenticated artifact registry exists.
+
+## Versions
+
+`runtime.env` is the release source of truth:
+
+- `RUNTIME_VERSION` is the public SemVer (`1.0.0`, `1.0.1`, `1.1.0`).
+- `RUNTIME_ABI` is the App-to-runtime contract.
+- `PREFIX_ABI` decides whether an existing Games container can be retained.
+- Wine and CrossOver source revisions are implementation details in
+  `sources/WINE_SOURCE.lock`.
+
+## Build a candidate
+
+The base archive is an explicit input. This prevents the Runtime repository
+from reading an App checkout and makes the dependency auditable.
+
+```bash
+./script/sync-wine-source.sh
+./script/build-runtime.sh \
+  --base-archive /absolute/path/to/known-good-runtime.tar.xz
+```
+
+For an App-side integration release that does not rebuild Wine:
+
+```bash
+./script/build-runtime.sh --repackage \
+  --base-archive /absolute/path/to/known-good-runtime.tar.xz
+```
+
+Both commands produce an archive and a SHA-256-bound manifest in `dist/`.
+Candidate artifacts are ignored by Git. Upload a tested artifact to an
+internal GitHub Release or CI store; only promote it into an App release after
+launch and game validation.

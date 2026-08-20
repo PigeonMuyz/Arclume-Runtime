@@ -1,0 +1,7 @@
+# Official CodeWeavers FOSS source input for the bundled Wine runtime.
+CROSSOVER_VERSION="26.3.0"
+WINE_VERSION="11.0"
+SOURCE_ARCHIVE="crossover-sources-26.3.0.tar.gz"
+SOURCE_URL="https://media.codeweavers.com/pub/crossover/source/crossover-sources-26.3.0.tar.gz"
+SOURCE_SHA256="ac99c8ca4b3848f3e81784135f023df266b61c2345726ea55a50b3e030dd6872"
+SOURCE_MEMBER="sources/wine"
