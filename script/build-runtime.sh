@@ -146,10 +146,10 @@ fi
 write_runtime_metadata() {
   local runtime_directory="$1"
   /usr/bin/printf '%s\n' "$RUNTIME_VERSION" > "$runtime_directory/$RUNTIME_MARKER_FILE"
-  /usr/bin/printf '{\n  "schemaVersion": 1,\n  "id": "%s",\n  "displayName": "%s",\n  "version": "%s",\n  "channel": "%s",\n  "runtimeABI": %s,\n  "prefixABI": "%s",\n  "architecture": "%s",\n  "minimumMacOS": "%s",\n  "legacyInstallMarkers": ["%s"],\n  "engine": {\n    "wineVersion": "%s",\n    "crossOverSourceVersion": "%s"\n  }\n}\n' \
+  /usr/bin/printf '{\n  "schemaVersion": 1,\n  "id": "%s",\n  "displayName": "%s",\n  "version": "%s",\n  "channel": "%s",\n  "runtimeABI": %s,\n  "prefixABI": "%s",\n  "architecture": "%s",\n  "minimumMacOS": "%s",\n  "legacyInstallRoots": ["%s"],\n  "legacyInstallMarkers": ["%s"],\n  "engine": {\n    "wineVersion": "%s",\n    "crossOverSourceVersion": "%s"\n  }\n}\n' \
     "$RUNTIME_ID" "$RUNTIME_DISPLAY_NAME" "$RUNTIME_VERSION" "$RUNTIME_CHANNEL" \
     "$RUNTIME_ABI" "$PREFIX_ABI" "$RUNTIME_ARCHITECTURE" "$RUNTIME_MINIMUM_MACOS" \
-    "$LEGACY_INSTALL_MARKER" "$WINE_VERSION" "$CROSSOVER_VERSION" > "$runtime_directory/.arclume-runtime.json"
+    "$LEGACY_INSTALL_ROOT" "$LEGACY_INSTALL_MARKER" "$WINE_VERSION" "$CROSSOVER_VERSION" > "$runtime_directory/.arclume-runtime.json"
 }
 
 write_release_manifest() {
@@ -158,10 +158,10 @@ write_release_manifest() {
   local manifest_path="${archive_path%.tar.xz}.runtime.json"
   local archive_name
   archive_name="$(/usr/bin/basename "$archive_path")"
-  /usr/bin/printf '{\n  "schemaVersion": 1,\n  "id": "%s",\n  "displayName": "%s",\n  "version": "%s",\n  "channel": "%s",\n  "runtimeABI": %s,\n  "prefixABI": "%s",\n  "architecture": "%s",\n  "minimumMacOS": "%s",\n  "legacyInstallMarkers": ["%s"],\n  "archive": {\n    "name": "%s",\n    "sha256": "%s",\n    "rootDirectory": "%s"\n  },\n  "engine": {\n    "wineVersion": "%s",\n    "crossOverSourceVersion": "%s"\n  }\n}\n' \
+  /usr/bin/printf '{\n  "schemaVersion": 1,\n  "id": "%s",\n  "displayName": "%s",\n  "version": "%s",\n  "channel": "%s",\n  "runtimeABI": %s,\n  "prefixABI": "%s",\n  "architecture": "%s",\n  "minimumMacOS": "%s",\n  "legacyInstallRoots": ["%s"],\n  "legacyInstallMarkers": ["%s"],\n  "archive": {\n    "name": "%s",\n    "sha256": "%s",\n    "rootDirectory": "%s"\n  },\n  "engine": {\n    "wineVersion": "%s",\n    "crossOverSourceVersion": "%s"\n  }\n}\n' \
     "$RUNTIME_ID" "$RUNTIME_DISPLAY_NAME" "$RUNTIME_VERSION" "$RUNTIME_CHANNEL" \
     "$RUNTIME_ABI" "$PREFIX_ABI" "$RUNTIME_ARCHITECTURE" "$RUNTIME_MINIMUM_MACOS" \
-    "$LEGACY_INSTALL_MARKER" "$archive_name" "$archive_sha" "$RUNTIME_ROOT" "$WINE_VERSION" "$CROSSOVER_VERSION" \
+    "$LEGACY_INSTALL_ROOT" "$LEGACY_INSTALL_MARKER" "$archive_name" "$archive_sha" "$RUNTIME_ROOT" "$WINE_VERSION" "$CROSSOVER_VERSION" \
     > "$manifest_path"
   echo "Manifest: $manifest_path"
 }

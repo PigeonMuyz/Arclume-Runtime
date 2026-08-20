@@ -8,6 +8,7 @@
   "prefixABI": "arclume-jx3-prefix-1",
   "architecture": "x86_64",
   "minimumMacOS": "26.0",
+  "legacyInstallRoots": ["procyon-wine-runtime-x86_64-v8-mono-d3dmetal4-zhcn"],
   "legacyInstallMarkers": ["wine-11.0-procyon.7"],
   "engine": {
     "wineVersion": "11.0",
