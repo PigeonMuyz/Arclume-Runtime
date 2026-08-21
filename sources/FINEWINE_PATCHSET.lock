@@ -1,0 +1,9 @@
+# Vendored Wine patches from stoicswe/Endfield_FineWine.
+# This lock identifies the reviewed upstream snapshot; the exact patch bytes
+# are checked by patches/finewine/PATCHES.sha256 before every source sync.
+FINEWINE_PATCHSET_NAME="Endfield_FineWine"
+FINEWINE_PATCHSET_REPOSITORY="https://github.com/stoicswe/Endfield_FineWine"
+FINEWINE_PATCHSET_REVISION="e5d4ccad235eefe32d912733e57e4c0bb53a5b58"
+FINEWINE_PATCHSET_BASELINE="CrossOver 26.2 / Wine 11.0"
+FINEWINE_PATCHSET_LICENSE="LGPL-2.1-or-later"
+FINEWINE_PATCHSET_PATCH_COUNT="23"

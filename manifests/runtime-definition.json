@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.arclume.runtime.wine",
   "displayName": "Arclume Wine",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "channel": "stable",
   "runtimeABI": 1,
   "prefixABI": "arclume-jx3-prefix-1",
@@ -18,10 +18,16 @@
     "d3dmetal": ["3", "4"],
     "dxvk": true,
     "msync": true,
-    "locale": "zh_CN"
+    "locale": "zh_CN",
+    "fineWinePatchSet": {
+      "name": "Endfield_FineWine",
+      "revision": "e5d4ccad235eefe32d912733e57e4c0bb53a5b58",
+      "patchCount": 23
+    }
   },
   "notes": [
     "This is a product release identity, not an upstream Wine version.",
-    "A prefix move is governed by prefixABI, not semantic version alone."
+    "A prefix move is governed by prefixABI, not semantic version alone.",
+    "FineWine compatibility patches preserve the existing prefix ABI."
   ]
 }

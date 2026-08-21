@@ -1,0 +1,22 @@
+name: Runtime 前置审核
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  patchset-check:
+    name: 校验 Wine 源码与 FineWine 补丁
+    runs-on: macos-26
+
+    steps:
+      - name: 检出 Runtime 源码
+        uses: actions/checkout@v4
+
+      - name: 校验补丁集（不构建 Wine）
+        run: ./script/runtime-preflight.sh --reset-source

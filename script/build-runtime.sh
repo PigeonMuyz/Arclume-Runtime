@@ -25,6 +25,11 @@ fi
 # shellcheck source=/dev/null
 source "$RUNTIME_DEFINITION"
 
+if [[ -z "${RUNTIME_PATCHSET:-}" ]]; then
+  echo "runtime.env must define RUNTIME_PATCHSET." >&2
+  exit 1
+fi
+
 RUNTIME_ROOT="arclume-wine-runtime-${RUNTIME_ARCHITECTURE}"
 DEFAULT_OUTPUT="$DIST_DIR/arclume-wine-${RUNTIME_VERSION}-${RUNTIME_ARCHITECTURE}.tar.xz"
 
@@ -32,6 +37,7 @@ clean_build=false
 repackage_only=false
 output_path="$DEFAULT_OUTPUT"
 base_archive=""
+runtime_channel="$RUNTIME_CHANNEL"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --clean)
@@ -56,9 +62,17 @@ while [[ $# -gt 0 ]]; do
       fi
       output_path="$1"
       ;;
+    --channel)
+      shift
+      if [[ $# -eq 0 ]]; then
+        echo "--channel requires stable or prerelease" >&2
+        exit 2
+      fi
+      runtime_channel="$1"
+      ;;
     --help|-h)
       cat <<'USAGE'
-Usage: ./script/build-runtime.sh --base-archive PATH [--clean] [--repackage] [--output PATH]
+Usage: ./script/build-runtime.sh --base-archive PATH [--clean] [--repackage] [--channel CHANNEL] [--output PATH]
 
 Builds the locked x86_64 Wine source, overlays its install output onto a fresh
 copy of an explicit baseline runtime archive, and writes a candidate .tar.xz
@@ -70,6 +84,8 @@ plus a SHA-256-bound release manifest.
   --repackage    Preserve the existing native Wine binaries and only create a
                  new, version-marked candidate archive. Use for App-side
                  runtime integration releases that do not change Wine source.
+  --channel      Release channel written to the candidate manifest: stable
+                 (default from runtime.env) or prerelease.
   --output PATH  Candidate archive destination (must not already exist).
 
 The input archive is never overwritten. The script does not access or modify
@@ -113,7 +129,7 @@ if [[ "$repackage_only" == false ]]; then
     fi
   done
   if [[ ! -x "$SOURCE_DIR/configure" || ! -f "$SOURCE_DIR/VERSION" ]]; then
-    echo "Wine source is not ready. Run ./script/sync_crossover_wine_source.sh first." >&2
+    echo "Wine source is not ready. Run ./script/sync-wine-source.sh first." >&2
     exit 1
   fi
   if [[ "$(<"$SOURCE_DIR/VERSION")" != "Wine version $WINE_VERSION" ]]; then
@@ -143,11 +159,19 @@ if [[ "$repackage_only" == true && "$clean_build" == true ]]; then
   exit 2
 fi
 
+case "$runtime_channel" in
+  stable|prerelease) ;;
+  *)
+    echo "Unsupported runtime channel: $runtime_channel" >&2
+    exit 2
+    ;;
+esac
+
 write_runtime_metadata() {
   local runtime_directory="$1"
   /usr/bin/printf '%s\n' "$RUNTIME_VERSION" > "$runtime_directory/$RUNTIME_MARKER_FILE"
-  /usr/bin/printf '{\n  "schemaVersion": 1,\n  "id": "%s",\n  "displayName": "%s",\n  "version": "%s",\n  "channel": "%s",\n  "runtimeABI": %s,\n  "prefixABI": "%s",\n  "architecture": "%s",\n  "minimumMacOS": "%s",\n  "legacyInstallRoots": ["%s"],\n  "legacyInstallMarkers": ["%s"],\n  "engine": {\n    "wineVersion": "%s",\n    "crossOverSourceVersion": "%s"\n  }\n}\n' \
-    "$RUNTIME_ID" "$RUNTIME_DISPLAY_NAME" "$RUNTIME_VERSION" "$RUNTIME_CHANNEL" \
+  /usr/bin/printf '{\n  "schemaVersion": 1,\n  "id": "%s",\n  "displayName": "%s",\n  "version": "%s",\n  "channel": "%s",\n  "patchSet": "%s",\n  "runtimeABI": %s,\n  "prefixABI": "%s",\n  "architecture": "%s",\n  "minimumMacOS": "%s",\n  "legacyInstallRoots": ["%s"],\n  "legacyInstallMarkers": ["%s"],\n  "engine": {\n    "wineVersion": "%s",\n    "crossOverSourceVersion": "%s"\n  }\n}\n' \
+    "$RUNTIME_ID" "$RUNTIME_DISPLAY_NAME" "$RUNTIME_VERSION" "$runtime_channel" "$RUNTIME_PATCHSET" \
     "$RUNTIME_ABI" "$PREFIX_ABI" "$RUNTIME_ARCHITECTURE" "$RUNTIME_MINIMUM_MACOS" \
     "$LEGACY_INSTALL_ROOT" "$LEGACY_INSTALL_MARKER" "$WINE_VERSION" "$CROSSOVER_VERSION" > "$runtime_directory/.arclume-runtime.json"
 }
@@ -158,8 +182,8 @@ write_release_manifest() {
   local manifest_path="${archive_path%.tar.xz}.runtime.json"
   local archive_name
   archive_name="$(/usr/bin/basename "$archive_path")"
-  /usr/bin/printf '{\n  "schemaVersion": 1,\n  "id": "%s",\n  "displayName": "%s",\n  "version": "%s",\n  "channel": "%s",\n  "runtimeABI": %s,\n  "prefixABI": "%s",\n  "architecture": "%s",\n  "minimumMacOS": "%s",\n  "legacyInstallRoots": ["%s"],\n  "legacyInstallMarkers": ["%s"],\n  "archive": {\n    "name": "%s",\n    "sha256": "%s",\n    "rootDirectory": "%s"\n  },\n  "engine": {\n    "wineVersion": "%s",\n    "crossOverSourceVersion": "%s"\n  }\n}\n' \
-    "$RUNTIME_ID" "$RUNTIME_DISPLAY_NAME" "$RUNTIME_VERSION" "$RUNTIME_CHANNEL" \
+  /usr/bin/printf '{\n  "schemaVersion": 1,\n  "id": "%s",\n  "displayName": "%s",\n  "version": "%s",\n  "channel": "%s",\n  "patchSet": "%s",\n  "runtimeABI": %s,\n  "prefixABI": "%s",\n  "architecture": "%s",\n  "minimumMacOS": "%s",\n  "legacyInstallRoots": ["%s"],\n  "legacyInstallMarkers": ["%s"],\n  "archive": {\n    "name": "%s",\n    "sha256": "%s",\n    "rootDirectory": "%s"\n  },\n  "engine": {\n    "wineVersion": "%s",\n    "crossOverSourceVersion": "%s"\n  }\n}\n' \
+    "$RUNTIME_ID" "$RUNTIME_DISPLAY_NAME" "$RUNTIME_VERSION" "$runtime_channel" "$RUNTIME_PATCHSET" \
     "$RUNTIME_ABI" "$PREFIX_ABI" "$RUNTIME_ARCHITECTURE" "$RUNTIME_MINIMUM_MACOS" \
     "$LEGACY_INSTALL_ROOT" "$LEGACY_INSTALL_MARKER" "$archive_name" "$archive_sha" "$RUNTIME_ROOT" "$WINE_VERSION" "$CROSSOVER_VERSION" \
     > "$manifest_path"
@@ -183,7 +207,9 @@ if [[ "$repackage_only" == true ]]; then
     echo "Baseline archive does not contain expected root: $baseline_root" >&2
     exit 1
   fi
-  /bin/mv "$extracted_runtime" "$staging_runtime"
+  if [[ "$extracted_runtime" != "$staging_runtime" ]]; then
+    /bin/mv "$extracted_runtime" "$staging_runtime"
+  fi
   for required_path in \
     "$staging_runtime/lib/wine/x86_64-unix/wine" \
     "$staging_runtime/bin/wineserver" \

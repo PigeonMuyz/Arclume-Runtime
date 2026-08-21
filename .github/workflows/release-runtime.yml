@@ -1,0 +1,258 @@
+name: 构建并发布 Arclume Wine Runtime
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "github actions，或与 runtime.env 一致的版本号，例如 1.1.0"
+        required: true
+        default: "github actions"
+        type: string
+      channel:
+        description: "发布通道"
+        required: true
+        default: "stable"
+        type: choice
+        options:
+          - stable
+          - prerelease
+
+permissions:
+  contents: write
+
+concurrency:
+  group: arclume-runtime-release
+  cancel-in-progress: false
+
+jobs:
+  build-and-release:
+    name: 构建 x86_64 Wine Runtime
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.head_commit.message, 'release:')
+    runs-on: macos-26
+    env:
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: 检出 Runtime 源码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 读取并校验发布版本
+        id: release
+        env:
+          RELEASE_INPUT: ${{ inputs.release }}
+          RELEASE_CHANNEL: ${{ inputs.channel }}
+        run: |
+          set -euo pipefail
+          source runtime.env
+
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            directive="$RELEASE_INPUT"
+            channel="$RELEASE_CHANNEL"
+          else
+            release_record=$(jq -r '.head_commit.message // empty' "$GITHUB_EVENT_PATH" | awk '
+              match($0, /^[[:space:]]*pre-release:[[:space:]]*/) {
+                sub(/^[[:space:]]*pre-release:[[:space:]]*/, "")
+                print "prerelease\t" $0
+                exit
+              }
+              match($0, /^[[:space:]]*release:[[:space:]]*/) {
+                sub(/^[[:space:]]*release:[[:space:]]*/, "")
+                print "stable\t" $0
+                exit
+              }
+            ')
+            channel="${release_record%%$'\t'*}"
+            directive="${release_record#*$'\t'}"
+          fi
+
+          case "$channel" in
+            stable) expected_tag="arclume-wine-$RUNTIME_VERSION" ;;
+            prerelease) expected_tag="arclume-wine-pre-$RUNTIME_VERSION" ;;
+            *)
+              echo "Unsupported release channel: $channel" >&2
+              exit 1
+              ;;
+          esac
+
+          directive=$(printf '%s' "$directive" | xargs)
+          test -n "$directive"
+          if [ "$(printf '%s' "$directive" | tr '[:upper:]' '[:lower:]')" = "github actions" ]; then
+            tag="$expected_tag"
+          else
+            case "$channel" in
+              stable) requested_version="${directive#arclume-wine-}" ;;
+              prerelease) requested_version="${directive#arclume-wine-pre-}" ;;
+            esac
+            if [ "$requested_version" != "$RUNTIME_VERSION" ]; then
+              echo "release 指令版本为 $directive，但 runtime.env 为 $RUNTIME_VERSION。" >&2
+              exit 1
+            fi
+            tag="$expected_tag"
+          fi
+
+          {
+            echo "tag=$tag"
+            echo "version=$RUNTIME_VERSION"
+            echo "baseline_version=$RUNTIME_BASELINE_VERSION"
+            echo "patchset=$RUNTIME_PATCHSET"
+            echo "channel=$channel"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: 安装构建依赖
+        run: |
+          brew install bison mingw-w64 freetype
+          echo "$(brew --prefix bison)/bin" >> "$GITHUB_PATH"
+          "$(brew --prefix bison)/bin/bison" --version
+          x86_64-w64-mingw32-strip --version
+
+      - name: 校验补丁集
+        run: ./script/runtime-preflight.sh --reset-source
+
+      - name: 下载已验证的基线 Runtime
+        env:
+          BASELINE_VERSION: ${{ steps.release.outputs.baseline_version }}
+        run: |
+          set -euo pipefail
+          baseline_dir="$RUNNER_TEMP/arclume-runtime-baseline"
+          mkdir -p "$baseline_dir"
+          gh release download "arclume-wine-$BASELINE_VERSION" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "arclume-wine-$BASELINE_VERSION-x86_64.tar.xz" \
+            --dir "$baseline_dir"
+          test -f "$baseline_dir/arclume-wine-$BASELINE_VERSION-x86_64.tar.xz"
+          echo "BASELINE_ARCHIVE=$baseline_dir/arclume-wine-$BASELINE_VERSION-x86_64.tar.xz" >> "$GITHUB_ENV"
+
+      - name: 构建并校验候选 Runtime
+        id: build
+        env:
+          OUTPUT_DIR: ${{ runner.temp }}/arclume-runtime-release
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUTPUT_DIR"
+          source runtime.env
+          archive="$OUTPUT_DIR/arclume-wine-$RUNTIME_VERSION-x86_64.tar.xz"
+
+          ./script/build-runtime.sh \
+            --clean \
+            --base-archive "$BASELINE_ARCHIVE" \
+            --channel "${{ steps.release.outputs.channel }}" \
+            --output "$archive"
+
+          manifest="${archive%.tar.xz}.runtime.json"
+          test -f "$manifest"
+          jq -e \
+            --arg version "$RUNTIME_VERSION" \
+            --arg archive_name "$(basename "$archive")" \
+            --arg patchset "$RUNTIME_PATCHSET" \
+            --arg channel "${{ steps.release.outputs.channel }}" \
+            '.version == $version
+              and .patchSet == $patchset
+              and .channel == $channel
+              and .archive.name == $archive_name
+              and (.archive.sha256 | test("^[a-f0-9]{64}$"))' \
+            "$manifest" >/dev/null
+          actual_sha=$(shasum -a 256 "$archive" | awk '{print $1}')
+          manifest_sha=$(jq -r '.archive.sha256' "$manifest")
+          test "$actual_sha" = "$manifest_sha"
+          tar -tJf "$archive" | grep -q '^arclume-wine-runtime-x86_64/lib/wine/x86_64-unix/ntdll.so$'
+          printf '%s  %s\n' "$actual_sha" "$(basename "$archive")" > "$archive.sha256"
+
+          {
+            echo "archive=$archive"
+            echo "manifest=$manifest"
+            echo "checksum=$archive.sha256"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: 保存 Runtime 构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: Arclume-Wine-${{ steps.release.outputs.channel }}-${{ steps.release.outputs.version }}
+          path: |
+            ${{ steps.build.outputs.archive }}
+            ${{ steps.build.outputs.manifest }}
+            ${{ steps.build.outputs.checksum }}
+          if-no-files-found: error
+
+      - name: 发布 GitHub Release
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+          VERSION: ${{ steps.release.outputs.version }}
+          PATCHSET: ${{ steps.release.outputs.patchset }}
+          CHANNEL: ${{ steps.release.outputs.channel }}
+          ARCHIVE: ${{ steps.build.outputs.archive }}
+          MANIFEST: ${{ steps.build.outputs.manifest }}
+          CHECKSUM: ${{ steps.build.outputs.checksum }}
+        run: |
+          set -euo pipefail
+          archive_sha=$(awk '{print $1}' "$CHECKSUM")
+          notes=$(printf '%s\n' \
+            "由 GitHub Actions 的 macos-26 runner 从锁定的 CodeWeavers Wine 源码构建。" \
+            "" \
+            "- Arclume Wine：$VERSION" \
+            "- 发布通道：$CHANNEL" \
+            "- Wine：11.0（CrossOver 26.3.0 FOSS source）" \
+            "- 补丁集：$PATCHSET（FineWine / Endfield，23 个 LGPL-2.1-or-later 补丁）" \
+            "- 保持现有 Runtime ABI 和 Games 容器 ABI。" \
+            "" \
+            "源码与声明：" \
+            "- Runtime source：https://github.com/PigeonMuyz/Arclume-Runtime/tree/$TAG" \
+            "- FineWine 来源：https://github.com/stoicswe/Endfield_FineWine/tree/e5d4ccad235eefe32d912733e57e4c0bb53a5b58" \
+            "- 第三方声明：https://github.com/PigeonMuyz/Arclume-Runtime/blob/$TAG/THIRD-PARTY-NOTICES.md" \
+            "" \
+            "Runtime SHA-256：$archive_sha")
+
+          release_flags=()
+          if [ "$CHANNEL" = "prerelease" ]; then
+            release_flags+=(--prerelease)
+          fi
+
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "Arclume Wine $VERSION" \
+              --notes "$notes" \
+              "${release_flags[@]}"
+          fi
+
+          gh release upload "$TAG" \
+            "$ARCHIVE" "$MANIFEST" "$CHECKSUM" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
+          if [ "$CHANNEL" = "prerelease" ]; then
+            gh release edit "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Arclume Wine $VERSION" \
+              --notes "$notes" \
+              --prerelease
+          else
+            gh release edit "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Arclume Wine $VERSION" \
+              --notes "$notes" \
+              --latest
+          fi
+
+      - name: 清理旧的 Runtime Pre-Release
+        if: steps.release.outputs.channel == 'prerelease'
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq '.[] | select(.prerelease == true) | .tag_name' | while IFS= read -r old_tag; do
+              case "$old_tag" in
+                "$TAG") ;;
+                arclume-wine-pre-*)
+                  echo "Removing obsolete Runtime Pre-Release: $old_tag"
+                  gh release delete "$old_tag" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag
+                  ;;
+              esac
+            done
