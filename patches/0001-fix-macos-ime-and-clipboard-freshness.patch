@@ -1,0 +1,64 @@
+diff --git a/dlls/winemac.drv/clipboard.c b/dlls/winemac.drv/clipboard.c
+--- a/dlls/winemac.drv/clipboard.c
++++ b/dlls/winemac.drv/clipboard.c
+@@ -64,7 +64,11 @@ typedef struct
+  *              Constants
+  **************************************************************************/
+ 
+-#define CLIPBOARD_UPDATE_DELAY 2000   /* delay between checks of the Mac pasteboard */
++/* Polling while a macOS application owns the pasteboard can remain relaxed.
++ * Explicit clipboard queries, however, are issued directly before a Windows
++ * application handles Ctrl+V and must not return stale data. */
++#define CLIPBOARD_POLL_INTERVAL 2000
++#define CLIPBOARD_QUERY_DELAY     50
+ 
+ 
+ /**************************************************************************
+@@ -1326,7 +1330,7 @@ static void grab_win32_clipboard(void)
+     last_clipboard_update = NtGetTickCount();
+     set_win32_clipboard_formats_from_mac_pasteboard(types);
+     NtUserCloseClipboard();
+-    NtUserSetTimer(clipboard_hwnd, 1, CLIPBOARD_UPDATE_DELAY, NULL, TIMERV_DEFAULT_COALESCING);
++    NtUserSetTimer(clipboard_hwnd, 1, CLIPBOARD_POLL_INTERVAL, NULL, TIMERV_DEFAULT_COALESCING);
+ }
+ 
+ 
+@@ -1348,7 +1352,7 @@ static void update_clipboard(void)
+ 
+     if (is_clipboard_owner)
+     {
+-        if (NtGetTickCount() - last_clipboard_update > CLIPBOARD_UPDATE_DELAY)
++        if (NtGetTickCount() - last_clipboard_update > CLIPBOARD_POLL_INTERVAL)
+             grab_win32_clipboard();
+     }
+     else if (!macdrv_is_pasteboard_owner(clipboard_cocoa_window))
+@@ -1438,7 +1442,7 @@ void macdrv_UpdateClipboard(void)
+     TRACE("\n");
+ 
+     now = NtGetTickCount();
+-    if (last_update && (int)(now - last_update) <= CLIPBOARD_UPDATE_DELAY) return;
++    if (last_update && (int)(now - last_update) <= CLIPBOARD_QUERY_DELAY) return;
+ 
+     if (!NtUserIsWindow(clipboard_manager))
+     {
+diff --git a/dlls/win32u/input.c b/dlls/win32u/input.c
+--- a/dlls/win32u/input.c
++++ b/dlls/win32u/input.c
+@@ -1346,10 +1346,13 @@ HKL WINAPI NtUserActivateKeyboardLayout( HKL layout, UINT flags )
+ 
+         if (ime_hwnd) send_message( ime_hwnd, WM_IME_INTERNAL, IME_INTERNAL_HKL_DEACTIVATE, HandleToUlong(old_layout) );
+ 
+-        if (HIWORD(layout) & 0x8000)
+-            FIXME( "Aliased keyboard layout not yet implemented\n" );
+-        else if (!(data = get_locale_data( HIWORD(layout) )))
+-            WARN( "Failed to find locale data for %04x\n", HIWORD(layout) );
++        /* macdrv identifies input methods with an aliased HKL.  Its low word
++         * still carries the input method locale (for example 0804 for
++         * Simplified Chinese), which is what WM_INPUTLANGCHANGE needs to pick
++         * the correct code page. */
++        locale = (HIWORD(layout) & 0x8000) ? LOWORD(layout) : HIWORD(layout);
++        if (!(data = get_locale_data( locale )))
++            WARN( "Failed to find locale data for %04x\n", locale );
+         else
+             translate_charset_info( ULongToPtr(data->idefaultansicodepage), &cs, TCI_SRCCODEPAGE );
+ 

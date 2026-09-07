@@ -274,6 +274,7 @@ configure_pipe2_cache="ac_cv_func_pipe2=no"
 # files as well when producing a distributable build. This is particularly
 # important for Rosetta on newer macOS releases.
 runtime_codesign_identity="${RUNTIME_CODESIGN_IDENTITY:-}"
+runtime_wine_entitlements="$ROOT_DIR/entitlements/wine-hosted-process.plist"
 jobs="${JOBS:-$(/usr/sbin/sysctl -n hw.ncpu)}"
 host_cc="/usr/bin/gcc -arch x86_64"
 host_cxx="/usr/bin/g++ -arch x86_64"
@@ -334,6 +335,48 @@ fi
 if /usr/bin/grep -q '^#define HAVE_PIPE2 1' "$BUILD_DIR/include/config.h"; then
   echo "Wine configuration unexpectedly enabled pipe2; refusing an incompatible macOS runtime." >&2
   exit 1
+fi
+
+# Wine's `sfnt2fon` host tool is linked against the x86_64 FreeType dylib
+# extracted from the baseline runtime. macOS does not use
+# DYLD_FALLBACK_LIBRARY_PATH for an @rpath dependency when the binary has no
+# LC_RPATH entry, and Wine's generated Makefile clears that environment value
+# before it runs the tool. Build the tool first, then attach a temporary rpath
+# to the local build copy. This is deliberately done before the full build and
+# never reaches the staged runtime.
+if [[ -f "$compat_lib_dir/libfreetype.6.dylib" ]]; then
+  sfnt2fon_binary="$BUILD_DIR/tools/sfnt2fon/sfnt2fon"
+  sfnt2fon_has_compat_rpath() {
+    [[ -x "$sfnt2fon_binary" ]] \
+      && /usr/bin/otool -l "$sfnt2fon_binary" | /usr/bin/awk -v expected="$compat_lib_dir" '
+        $1 == "cmd" && $2 == "LC_RPATH" { in_rpath = 1; next }
+        in_rpath && $1 == "path" {
+          if ($2 == expected) found = 1
+          in_rpath = 0
+        }
+        END { exit(found ? 0 : 1) }
+      '
+  }
+  if ! sfnt2fon_has_compat_rpath; then
+    echo "Preparing Wine font build tool..."
+    sfnt2fon_backup=""
+    if [[ -e "$sfnt2fon_binary" ]]; then
+      sfnt2fon_backup="$(/usr/bin/mktemp "$BUILD_DIR/.sfnt2fon-without-rpath.XXXXXX")"
+      /bin/mv "$sfnt2fon_binary" "$sfnt2fon_backup"
+    fi
+    (
+      cd "$BUILD_DIR"
+      run_x86 /usr/bin/env \
+        PATH="/usr/local/bin:$build_path" \
+        SDKROOT="$sdk_root" \
+        MACOSX_DEPLOYMENT_TARGET="$deployment_target" \
+        /usr/bin/make "LDFLAGS=$build_ldflags -Wl,-headerpad_max_install_names" tools/sfnt2fon/sfnt2fon
+    )
+    /usr/bin/install_name_tool -add_rpath "$compat_lib_dir" "$sfnt2fon_binary"
+    if [[ -n "$sfnt2fon_backup" ]]; then
+      /usr/bin/find "$sfnt2fon_backup" -depth -delete
+    fi
+  fi
 fi
 
 echo "Building Wine $WINE_VERSION with $jobs jobs..."
@@ -424,6 +467,10 @@ if ! /usr/bin/xcrun vtool -show-build "$wine_loader" \
 fi
 
 if [[ -n "$runtime_codesign_identity" ]]; then
+  if [[ ! -f "$runtime_wine_entitlements" ]]; then
+    echo "Missing Wine hosted-process entitlements: $runtime_wine_entitlements" >&2
+    exit 1
+  fi
   echo "Signing native Wine runtime files..."
   while IFS= read -r -d '' native_binary; do
     if /usr/bin/file -b "$native_binary" | /usr/bin/grep -q '^Mach-O'; then
@@ -431,6 +478,14 @@ if [[ -n "$runtime_codesign_identity" ]]; then
         --timestamp=none "$native_binary"
     fi
   done < <(/usr/bin/find "$staging_runtime" -type f -print0)
+
+  # The macOS Wine loader is the process that opens CoreAudio on behalf of a
+  # Windows game. Keep this separate from the generic signing pass so native
+  # libraries retain their minimal signatures while the loader carries only
+  # the declared audio-input capability.
+  /usr/bin/codesign --force --sign "$runtime_codesign_identity" \
+    --entitlements "$runtime_wine_entitlements" \
+    --timestamp=none "$wine_loader"
 
 fi
 

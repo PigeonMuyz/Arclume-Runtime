@@ -36,6 +36,10 @@ jobs:
     runs-on: macos-26
     env:
       GH_TOKEN: ${{ github.token }}
+      MACOS_APP_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_APP_CERTIFICATE_P12_BASE64 }}
+      MACOS_APP_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_APP_CERTIFICATE_PASSWORD }}
+      MACOS_DEVELOPER_TEAM_ID: ${{ secrets.MACOS_DEVELOPER_TEAM_ID }}
+      RUNTIME_CODESIGN_IDENTITY: ${{ secrets.RUNTIME_CODESIGN_IDENTITY || secrets.MACOS_SIGNING_IDENTITY }}
 
     steps:
       - name: 检出 Runtime 源码
@@ -112,6 +116,33 @@ jobs:
           "$(brew --prefix bison)/bin/bison" --version
           x86_64-w64-mingw32-strip --version
 
+      - name: 检查 Runtime 签名配置
+        run: |
+          set -euo pipefail
+          if [ -z "$MACOS_APP_CERTIFICATE_P12_BASE64" ] \
+            || [ -z "$MACOS_APP_CERTIFICATE_PASSWORD" ] \
+            || [ -z "$MACOS_DEVELOPER_TEAM_ID" ] \
+            || [ -z "$RUNTIME_CODESIGN_IDENTITY" ]; then
+            echo "Runtime 发布需要 Developer ID 证书和 RUNTIME_CODESIGN_IDENTITY：Wine loader 必须携带 macOS 麦克风输入 entitlement。" >&2
+            exit 1
+          fi
+
+      - name: 导入 Runtime 签名证书
+        env:
+          KEYCHAIN_PASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          keychain="$RUNNER_TEMP/arclume-runtime-signing.keychain-db"
+          certificate="$RUNNER_TEMP/arclume-runtime-signing.p12"
+          printf '%s' "$MACOS_APP_CERTIFICATE_P12_BASE64" | base64 -D > "$certificate"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
+          security import "$certificate" -k "$keychain" -P "$MACOS_APP_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$keychain"
+          security list-keychain -d user -s "$keychain" login.keychain-db
+          security find-identity -v -p codesigning "$keychain"
+
       - name: 校验补丁集
         run: ./script/runtime-preflight.sh --reset-source
 
@@ -133,6 +164,7 @@ jobs:
         id: build
         env:
           OUTPUT_DIR: ${{ runner.temp }}/arclume-runtime-release
+          RUNTIME_CODESIGN_IDENTITY: ${{ env.RUNTIME_CODESIGN_IDENTITY }}
         run: |
           set -euo pipefail
           mkdir -p "$OUTPUT_DIR"
@@ -162,6 +194,15 @@ jobs:
           manifest_sha=$(jq -r '.archive.sha256' "$manifest")
           test "$actual_sha" = "$manifest_sha"
           tar -tJf "$archive" | grep -q '^arclume-wine-runtime-x86_64/lib/wine/x86_64-unix/ntdll.so$'
+          runtime_verify_dir="$RUNNER_TEMP/arclume-runtime-signature-check"
+          rm -rf "$runtime_verify_dir"
+          mkdir -p "$runtime_verify_dir"
+          tar -xJf "$archive" -C "$runtime_verify_dir"
+          wine_loader="$runtime_verify_dir/arclume-wine-runtime-x86_64/lib/wine/x86_64-unix/wine"
+          codesign --verify --deep --strict --verbose=2 "$wine_loader"
+          codesign --display --entitlements :- "$wine_loader" 2> "$runtime_verify_dir/wine.entitlements.plist"
+          /usr/libexec/PlistBuddy -c 'Print :com.apple.security.device.audio-input' \
+            "$runtime_verify_dir/wine.entitlements.plist" | grep -qx 'true'
           printf '%s  %s\n' "$actual_sha" "$(basename "$archive")" > "$archive.sha256"
 
           {

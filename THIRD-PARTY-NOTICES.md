@@ -20,7 +20,7 @@ fonts and optional NVIDIA payloads retain their respective upstream terms.
 
 ## FineWine / Endfield compatibility patches
 
-Arclume Wine 1.1.0 vendors 23 patches from
+Arclume Wine 1.1.1 vendors 23 patches from
 [stoicswe/Endfield_FineWine](https://github.com/stoicswe/Endfield_FineWine) at
 revision `e5d4ccad235eefe32d912733e57e4c0bb53a5b58`. The upstream project
 states that its Wine patches are LGPL-2.1-or-later; the stage-two set originates

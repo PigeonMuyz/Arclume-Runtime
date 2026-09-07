@@ -1,1 +1,5 @@
 patches/finewine/** whitespace=-trailing-space
+# Unified-diff context uses a leading space for blank source lines. Keep the
+# local Wine patch byte-for-byte applicable while excluding that syntax from
+# Git's source-file trailing-whitespace check.
+patches/*.patch whitespace=-trailing-space

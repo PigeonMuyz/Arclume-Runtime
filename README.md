@@ -24,7 +24,7 @@ exact source tag, source lock, patches, notices and SHA-256-bound manifest.
 - Wine and CrossOver source revisions are implementation details in
   `sources/WINE_SOURCE.lock`.
 - `RUNTIME_PATCHSET` records the Wine behavior included in the Runtime.
-  Arclume Wine 1.1.0 vendors the reviewed FineWine / Endfield compatibility
+  Arclume Wine 1.1.1 vendors the reviewed FineWine / Endfield compatibility
   patch set; see `patches/finewine/` and `sources/FINEWINE_PATCHSET.lock`.
 
 ## Build a candidate
@@ -61,6 +61,11 @@ the source tag and third-party notices linked beside the binary.
   the requested version matches `runtime.env`, downloads the declared baseline
   Runtime, rebuilds Wine, checks the archive and manifest, then publishes the
   archive, manifest and SHA-256 file to the matching Stable or Pre-Release.
+  Runtime 发布还需要 `MACOS_APP_CERTIFICATE_P12_BASE64`、
+  `MACOS_APP_CERTIFICATE_PASSWORD`、`MACOS_DEVELOPER_TEAM_ID` 与
+  `RUNTIME_CODESIGN_IDENTITY`（也可复用 `MACOS_SIGNING_IDENTITY`）。这不是 DMG
+  签名要求：Wine loader 需携带 macOS 麦克风输入 entitlement；缺少证书时 workflow
+  会停止，避免发布功能倒退的 Runtime。
   A Pre-Release uses the `prerelease` manifest channel and
   `arclume-wine-pre-<version>` tag; after publication the workflow removes only
   older Arclume Wine Pre-Releases, never a Stable Release.
