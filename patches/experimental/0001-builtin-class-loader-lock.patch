@@ -1,0 +1,124 @@
+From: Arclume contributors
+Subject: [EXPERIMENTAL, opt-in] user32: order builtin class initialization after loader lock
+
+Keep builtin cursor and theme initialization behind the recursive loader lock.
+Requires matching user32 (both PE architectures) and win32u Unix module.
+
+--- a/dlls/user32/class.c
++++ b/dlls/user32/class.c
+@@ -24,6 +24,7 @@
+ #include "user_private.h"
+ #include "controls.h"
+ #include "wine/debug.h"
++#include "wine/exception.h"
+ 
+ WINE_DEFAULT_DEBUG_CHANNEL(class);
+ 
+@@ -259,14 +260,33 @@
+ /***********************************************************************
+  *           User32InitBuiltinClasses
+  */
++static void WINAPI unlock_builtin_classes( BOOL normal, void *cookie )
++{
++    LdrUnlockLoaderLock( 0, *(ULONG_PTR *)cookie );
++}
++
+ NTSTATUS WINAPI User32InitBuiltinClasses( void *args, ULONG size )
+ {
++    static BOOL initialized;
++    ULONG_PTR cookie;
++    NTSTATUS status;
+     DWORD layout;
+ 
+-    GetProcessDefaultLayout( &layout ); /* make sure that process layout is initialized */
+-
+-    /* Load uxtheme.dll so that standard scrollbars and dialogs are hooked for theming support */
+-    load_uxtheme();
++    /* Cursor loading and theming take the loader lock. Take it before serializing
++     * class initialization, which may also be entered from a DLL's DllMain. */
++    if ((status = LdrLockLoaderLock( 0, NULL, &cookie ))) return status;
++    __TRY
++    {
++        if (!initialized)
++        {
++            NtUserCallNoParam( NtUserCallNoParam_RegisterBuiltinClasses );
++            GetProcessDefaultLayout( &layout );
++            /* Theme DLL initialization may reenter user32. The classes now exist. */
++            initialized = TRUE;
++            load_uxtheme();
++        }
++    }
++    __FINALLY_CTX( unlock_builtin_classes, &cookie )
+     return STATUS_SUCCESS;
+ }
+ 
+--- a/dlls/win32u/class.c
++++ b/dlls/win32u/class.c
+@@ -1218,10 +1218,10 @@
+         NtUserDestroyCursor( class.hCursor, 0 );
+ }
+ 
+-static void register_builtins(void)
++/* Called by user32 with the loader lock held, once per process. */
++void register_builtin_classes_locked(void)
+ {
+-    ULONG ret_len, i;
+-    void *ret_ptr;
++    ULONG i;
+ 
+     /* 64-bit Windows use sizeof(UINT64) for all processes, while 32-bit Windows use 6 for extra
+      * bytes size. Civilization II depends on the size being 6, so we use that even in wow64. */
+@@ -1236,7 +1236,6 @@
+ 
+     for (i = 0; i < ARRAYSIZE(builtin_classes); i++) register_builtin( &builtin_classes[i] );
+     register_builtin( &edit_class );
+-    KeUserModeCallback( NtUserInitBuiltinClasses, NULL, 0, &ret_ptr, &ret_len );
+ }
+ 
+ /***********************************************************************
+@@ -1244,8 +1243,10 @@
+  */
+ void register_builtin_classes(void)
+ {
+-    static pthread_once_t init_once = PTHREAD_ONCE_INIT;
+-    pthread_once( &init_once, register_builtins );
++    ULONG ret_len;
++    void *ret_ptr;
++
++    KeUserModeCallback( NtUserInitBuiltinClasses, NULL, 0, &ret_ptr, &ret_len );
+ }
+ 
+ /***********************************************************************
+--- a/dlls/win32u/ntuser_private.h
++++ b/dlls/win32u/ntuser_private.h
+@@ -199,6 +199,7 @@
+ extern BOOL is_desktop_class( UNICODE_STRING *name );
+ extern BOOL is_message_class( UNICODE_STRING *name );
+ extern void register_builtin_classes(void);
++extern void register_builtin_classes_locked(void);
+ extern void register_desktop_class(void);
+ 
+ /* imm.c */
+--- a/dlls/win32u/sysparams.c
++++ b/dlls/win32u/sysparams.c
+@@ -7506,6 +7506,10 @@
+ 
+     case NtUserThreadDetach:
+         thread_detach();
++        return 0;
++
++    case NtUserCallNoParam_RegisterBuiltinClasses:
++        register_builtin_classes_locked();
+         return 0;
+ 
+     default:
+--- a/include/ntuser.h
++++ b/include/ntuser.h
+@@ -1094,6 +1094,7 @@
+     /* temporary exports */
+     NtUserExitingThread,
+     NtUserThreadDetach,
++    NtUserCallNoParam_RegisterBuiltinClasses,
+ };
+ 
+ static inline HWND NtUserGetDesktopWindow(void)

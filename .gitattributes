@@ -3,3 +3,4 @@ patches/finewine/** whitespace=-trailing-space
 # local Wine patch byte-for-byte applicable while excluding that syntax from
 # Git's source-file trailing-whitespace check.
 patches/*.patch whitespace=-trailing-space
+patches/experimental/*.patch whitespace=-trailing-space
