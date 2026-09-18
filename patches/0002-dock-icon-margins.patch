@@ -1,0 +1,88 @@
+From: Arclume contributors
+Subject: winemac: preserve icon aspect ratio and reserve transparent Dock margins
+
+--- a/dlls/winemac.drv/cocoa_icon_utils.h
++++ b/dlls/winemac.drv/cocoa_icon_utils.h
+@@ -29,6 +29,9 @@
+ /* Returns nil on error. Result is autoreleased. */
+ + (NSImage *) maskedAppIconFromCGImages:(NSArray *)images;
+ 
++/* Preserve artwork and add transparent Dock margins; result is autoreleased. */
+++ (nullable NSImage *) dockIconFromImage:(nullable NSImage *)image;
++
+ @end
+ 
+ NS_ASSUME_NONNULL_END
+--- a/dlls/winemac.drv/cocoa_icon_utils.m
++++ b/dlls/winemac.drv/cocoa_icon_utils.m
+@@ -28,6 +28,51 @@
+ 
+ @implementation WineIconUtils
+ 
+++ (NSImage *) dockIconFromImage:(NSImage *)image
++{
++    if (!image || image.size.width <= 0 || image.size.height <= 0) return image;
++    const size_t side = 512;
++    NSRect proposed = {NSZeroPoint, image.size};
++    CGImageRef original = [image CGImageForProposedRect:&proposed context:nil hints:nil];
++    if (!original) return image;
++    CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
++    CGContextRef ctx = CGBitmapContextCreate(NULL, side, side, 8, side * 4,
++                                             space, (CGBitmapInfo)kCGImageAlphaPremultipliedLast);
++    CGColorSpaceRelease(space);
++    if (!ctx) return image;
++    CGFloat fit = side / MAX(image.size.width, image.size.height);
++    CGRect full = CGRectMake((side - image.size.width * fit) / 2,
++                             (side - image.size.height * fit) / 2,
++                             image.size.width * fit, image.size.height * fit);
++    CGContextDrawImage(ctx, full, original);
++    unsigned char *pixels = CGBitmapContextGetData(ctx);
++    size_t minX = side, minY = side, maxX = 0, maxY = 0;
++    BOOL found = NO;
++    for (size_t y = 0; y < side; ++y)
++        for (size_t x = 0; x < side; ++x)
++            if (pixels[(y * side + x) * 4 + 3] > 24)
++            {
++                minX = MIN(minX, x); minY = MIN(minY, y);
++                maxX = MAX(maxX, x); maxY = MAX(maxY, y); found = YES;
++            }
++    if (!found) { CGContextRelease(ctx); return image; }
++    /* macOS icons normally reserve about 10% on each side. Never enlarge
++     * already padded artwork or crop the source's transparent silhouette. */
++    CGFloat scale = MIN(1.0, (side * 0.80) / MAX(maxX - minX + 1, maxY - minY + 1));
++    CGContextClearRect(ctx, CGRectMake(0, 0, side, side));
++    full.origin.x = side / 2.0 + (full.origin.x - side / 2.0) * scale;
++    full.origin.y = side / 2.0 + (full.origin.y - side / 2.0) * scale;
++    full.size.width *= scale;
++    full.size.height *= scale;
++    CGContextSetInterpolationQuality(ctx, kCGInterpolationHigh);
++    CGContextDrawImage(ctx, full, original);
++    CGImageRef output = CGBitmapContextCreateImage(ctx);
++    NSImage *result = output ? [[[NSImage alloc] initWithCGImage:output size:NSMakeSize(side, side)] autorelease] : image;
++    if (output) CGImageRelease(output);
++    CGContextRelease(ctx);
++    return result;
++}
++
+ + (double) percentOfNonTransparentPixelsAlongEdgeOfImage:(NSImage *)image
+ {
+     static const int edgeSize = 50;  /* @ 1024x1024 */
+--- a/dlls/winemac.drv/cocoa_app.m
++++ b/dlls/winemac.drv/cocoa_app.m
+@@ -1204,7 +1204,7 @@
+                 nsimage = nil;
+         }
+ 
+-        self.applicationIcon = nsimage;
++        self.applicationIcon = [WineIconUtils dockIconFromImage:nsimage];
+     }
+ 
+     - (void) handleCommandTab
+@@ -2896,6 +2896,6 @@
+         if (imageArray || ![image isValid])
+             [controller setApplicationIconFromCGImageArray:imageArray];
+         else
+-            controller.applicationIcon = image;
++            controller.applicationIcon = [WineIconUtils dockIconFromImage:image];
+     });
+ }

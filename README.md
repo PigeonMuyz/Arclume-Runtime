@@ -26,6 +26,11 @@ exact source tag, source lock, patches, notices and SHA-256-bound manifest.
 - `RUNTIME_PATCHSET` records the Wine behavior included in the Runtime.
   Arclume Wine 1.1.1 vendors the reviewed FineWine / Endfield compatibility
   patch set; see `patches/finewine/` and `sources/FINEWINE_PATCHSET.lock`.
+  Version 1.1.2 adds proportional Dock icon margins and paired user32/win32u
+  loader-lock ordering changes. The native host remains x86_64 (AMD64); WoW64
+  includes both i386 and x86_64 Windows modules because YY is a 32-bit app.
+  **YY may still become unresponsive in microphone-queue mode.** This release
+  is not a claim that all channel modes or long voice sessions are stable.
 
 ## Build a candidate
 

@@ -53,6 +53,15 @@ if [[ -f "$SOURCE_DIR/VERSION" && "$reset_source" == false ]]; then
   if [[ "$actual_version" == "Wine version $WINE_VERSION" \
       && -f "$PATCHSET_MARKER_FILE" \
       && "$(<"$PATCHSET_MARKER_FILE")" == "$FINEWINE_PATCHSET_REVISION" ]]; then
+    # The FineWine revision alone does not identify our product patches.
+    # Refuse stale extracted sources after a new local patch is introduced.
+    for local_patch in "$PATCH_DIR"/*.patch; do
+      [[ -f "$local_patch" ]] || continue
+      if ! git -C "$ROOT_DIR" apply --reverse --check --directory=work/wine "$local_patch"; then
+        echo "Existing source is missing or conflicts with $local_patch; save local work before --reset." >&2
+        exit 1
+      fi
+    done
     echo "Wine source is ready: $SOURCE_DIR ($actual_version)"
     exit 0
   fi

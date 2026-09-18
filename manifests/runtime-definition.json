@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.arclume.runtime.wine",
   "displayName": "Arclume Wine",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "channel": "stable",
   "runtimeABI": 1,
   "prefixABI": "arclume-jx3-prefix-1",

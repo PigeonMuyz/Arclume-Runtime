@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOCK_FILE="$ROOT_DIR/sources/WINE_SOURCE.lock"
 RUNTIME_DEFINITION="$ROOT_DIR/runtime.env"
 SOURCE_DIR="$ROOT_DIR/work/wine"
-BUILD_DIR="$ROOT_DIR/work/build/wine-x86_64"
+BUILD_DIR="$ROOT_DIR/work/build/wine-wow64"
 DIST_DIR="$ROOT_DIR/dist"
 RUNTIME_MARKER_FILE=".arclume-runtime-version"
 
@@ -80,7 +80,7 @@ plus a SHA-256-bound release manifest.
 
   --base-archive PATH  A known-good runtime archive used only as a packaging
                        baseline. It is never read from an App checkout.
-  --clean        Remove only work/build/wine-x86_64 before configuring.
+  --clean        Remove only work/build/wine-wow64 before configuring.
   --repackage    Preserve the existing native Wine binaries and only create a
                  new, version-marked candidate archive. Use for App-side
                  runtime integration releases that do not change Wine source.
@@ -122,6 +122,7 @@ for tool in /usr/bin/tar /usr/bin/shasum; do
 done
 
 if [[ "$repackage_only" == false ]]; then
+  "$ROOT_DIR/script/sync-wine-source.sh"
   for tool in /usr/bin/xcrun /usr/bin/make; do
     if [[ ! -x "$tool" ]]; then
       echo "Required build tool is unavailable: $tool" >&2
@@ -246,7 +247,7 @@ fi
 
 if [[ "$clean_build" == true && -e "$BUILD_DIR" ]]; then
   case "$BUILD_DIR" in
-    "$ROOT_DIR"/work/build/wine-x86_64) ;;
+    "$ROOT_DIR"/work/build/wine-wow64) ;;
     *)
       echo "Refusing to clean unexpected build path: $BUILD_DIR" >&2
       exit 1
@@ -326,10 +327,15 @@ if [[ ! -f "$BUILD_DIR/Makefile" ]]; then
       FREETYPE_LIBS="$freetype_libs" \
       "$configure_pipe2_cache" \
       /bin/bash "$SOURCE_DIR/configure" \
-      --enable-win64 \
+      --enable-archs=i386,x86_64 \
       --disable-tests \
       --prefix=/
   )
+fi
+
+if ! /usr/bin/grep -Eq '^PE_ARCHS = i386 x86_64$' "$BUILD_DIR/Makefile"; then
+  echo "Expected paired i386/x86_64 Windows modules; refusing a stale single-architecture build." >&2
+  exit 1
 fi
 
 if /usr/bin/grep -q '^#define HAVE_PIPE2 1' "$BUILD_DIR/include/config.h"; then
