@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOCK_FILE="$ROOT_DIR/sources/WINE_SOURCE.lock"
 RUNTIME_DEFINITION="$ROOT_DIR/runtime.env"
 SOURCE_DIR="$ROOT_DIR/work/wine"
-BUILD_DIR="$ROOT_DIR/work/build/wine-wow64"
+BUILD_DIR="$ROOT_DIR/work/build/wine-wow64-media"
 DIST_DIR="$ROOT_DIR/dist"
 RUNTIME_MARKER_FILE=".arclume-runtime-version"
 
@@ -72,7 +72,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     --help|-h)
       cat <<'USAGE'
-Usage: ./script/build-runtime.sh --base-archive PATH [--clean] [--repackage] [--channel CHANNEL] [--output PATH]
+Usage: ./script/build-runtime.sh --base-archive PATH [--clean] [--channel CHANNEL] [--output PATH]
 
 Builds the locked x86_64 Wine source, overlays its install output onto a fresh
 copy of an explicit baseline runtime archive, and writes a candidate .tar.xz
@@ -80,10 +80,9 @@ plus a SHA-256-bound release manifest.
 
   --base-archive PATH  A known-good runtime archive used only as a packaging
                        baseline. It is never read from an App checkout.
-  --clean        Remove only work/build/wine-wow64 before configuring.
-  --repackage    Preserve the existing native Wine binaries and only create a
-                 new, version-marked candidate archive. Use for App-side
-                 runtime integration releases that do not change Wine source.
+  --clean        Remove only work/build/wine-wow64-media before configuring.
+  --repackage    Unsupported for multimedia candidates; the Wine bridges
+                 must be compiled with the pinned media SDK.
   --channel      Release channel written to the candidate manifest: stable
                  (default from runtime.env) or prerelease.
   --output PATH  Candidate archive destination (must not already exist).
@@ -150,13 +149,21 @@ if [[ -z "$baseline_root" || "$baseline_root" == "." || "$baseline_root" == ".."
   exit 1
 fi
 
-if [[ -e "$output_path" ]]; then
+if [[ -e "$output_path" || -L "$output_path" \
+   || -e "${output_path%.tar.xz}.runtime.json" || -L "${output_path%.tar.xz}.runtime.json" ]]; then
   echo "Refusing to overwrite existing candidate: $output_path" >&2
   exit 1
 fi
 
 if [[ "$repackage_only" == true && "$clean_build" == true ]]; then
   echo "--clean cannot be used with --repackage." >&2
+  exit 2
+fi
+
+# A multimedia release must rebuild the Wine bridges, not merely add codec
+# files around an old core built without GStreamer/FFmpeg support.
+if [[ "$repackage_only" == true ]]; then
+  echo "Multimedia candidates require a full build; --repackage is not supported." >&2
   exit 2
 fi
 
@@ -247,7 +254,7 @@ fi
 
 if [[ "$clean_build" == true && -e "$BUILD_DIR" ]]; then
   case "$BUILD_DIR" in
-    "$ROOT_DIR"/work/build/wine-wow64) ;;
+    "$ROOT_DIR"/work/build/wine-wow64-media) ;;
     *)
       echo "Refusing to clean unexpected build path: $BUILD_DIR" >&2
       exit 1
@@ -276,7 +283,10 @@ configure_pipe2_cache="ac_cv_func_pipe2=no"
 # important for Rosetta on newer macOS releases.
 runtime_codesign_identity="${RUNTIME_CODESIGN_IDENTITY:-}"
 runtime_wine_entitlements="$ROOT_DIR/entitlements/wine-hosted-process.plist"
-jobs="${JOBS:-$(/usr/sbin/sysctl -n hw.ncpu)}"
+jobs="${JOBS:-3}"
+python3 "$ROOT_DIR/script/build-media.py" --jobs "$jobs"
+media_sdk="$(cd "$ROOT_DIR/work/media/current" && pwd -P)"
+media_recipe="$(<"$media_sdk/.arclume-media-recipe")"
 host_cc="/usr/bin/gcc -arch x86_64"
 host_cxx="/usr/bin/g++ -arch x86_64"
 build_path="$PATH"
@@ -292,8 +302,8 @@ fi
 # The rebuilt runtime continues to ship that same dylib under lib64.
 freetype_cflags="${FREETYPE_CFLAGS:-}"
 freetype_libs="${FREETYPE_LIBS:-}"
-build_dyld_fallback="${DYLD_FALLBACK_LIBRARY_PATH:-}"
-build_ldflags="${LDFLAGS:-}"
+build_dyld_fallback="$media_sdk/lib"
+build_ldflags="-L$media_sdk/lib -Wl,-headerpad_max_install_names"
 compat_lib_dir="$BUILD_DIR/.arclume-x86_64-libs"
 if [[ -f "$base_archive" ]]; then
   /bin/mkdir -p "$compat_lib_dir"
@@ -312,6 +322,29 @@ if [[ -z "$freetype_cflags" && -z "$freetype_libs" \
   freetype_libs="-L$compat_lib_dir -lfreetype"
 fi
 
+# Bind the configure cache to Wine, patches, SDK, compiler and all environment
+# inputs, not just the multimedia recipe. CI still uses an explicit --clean.
+wine_configuration="$(python3 - "$ROOT_DIR" "$media_recipe" "$sdk_root" \
+  "$deployment_target" "$host_cc" "$host_cxx" "$build_ldflags" \
+  "$freetype_cflags" "$freetype_libs" <<'PY'
+import hashlib, pathlib, subprocess, sys
+root = pathlib.Path(sys.argv[1])
+state = hashlib.sha256(repr(sys.argv[2:]).encode())
+inputs = [root / 'script/build-runtime.sh', root / 'work/wine/configure']
+inputs += sorted((root / 'sources').glob('*.lock'))
+inputs += sorted((root / 'patches').rglob('*.patch'))
+for path in inputs:
+    state.update(str(path.relative_to(root)).encode() + b'\0')
+    state.update(path.read_bytes())
+state.update(subprocess.check_output(['/usr/bin/xcrun', 'clang', '--version']))
+print(state.hexdigest())
+PY
+)"
+if [[ -f "$BUILD_DIR/Makefile" ]] && { [[ ! -f "$BUILD_DIR/.arclume-build-recipe" ]] || [[ "$(<"$BUILD_DIR/.arclume-build-recipe")" != "$wine_configuration" ]]; }; then
+  echo "Wine configuration inputs changed; use --clean rather than stale build output." >&2
+  exit 1
+fi
+
 if [[ ! -f "$BUILD_DIR/Makefile" ]]; then
   echo "Configuring Wine $WINE_VERSION for x86_64..."
   (
@@ -323,17 +356,29 @@ if [[ ! -f "$BUILD_DIR/Makefile" ]]; then
       CC="$host_cc" \
       CXX="$host_cxx" \
       LDFLAGS="$build_ldflags" \
+      PKG_CONFIG_PATH="" \
+      PKG_CONFIG_LIBDIR="$media_sdk/lib/pkgconfig" \
       FREETYPE_CFLAGS="$freetype_cflags" \
       FREETYPE_LIBS="$freetype_libs" \
       "$configure_pipe2_cache" \
       /bin/bash "$SOURCE_DIR/configure" \
       --enable-archs=i386,x86_64 \
       --disable-tests \
+      --with-gstreamer \
+      --with-ffmpeg \
       --prefix=/
   )
+  /bin/cp "$media_sdk/.arclume-media-recipe" "$BUILD_DIR/.arclume-media-recipe"
+  /usr/bin/printf '%s\n' "$wine_configuration" > "$BUILD_DIR/.arclume-build-recipe"
 fi
 
-if ! /usr/bin/grep -Eq '^PE_ARCHS = i386 x86_64$' "$BUILD_DIR/Makefile"; then
+if ! /usr/bin/grep -q '^#define HAVE_FFMPEG 1' "$BUILD_DIR/include/config.h" \
+  || ! /usr/bin/grep -Eq '^GSTREAMER_LIBS = .+' "$BUILD_DIR/Makefile"; then
+  echo "Wine multimedia bridges were not enabled; refusing an incomplete candidate." >&2
+  exit 1
+fi
+
+if ! /usr/bin/grep -Eq '^PE_ARCHS[[:space:]]*=[[:space:]]+i386[[:space:]]+x86_64[[:space:]]*$' "$BUILD_DIR/Makefile"; then
   echo "Expected paired i386/x86_64 Windows modules; refusing a stale single-architecture build." >&2
   exit 1
 fi
@@ -458,6 +503,13 @@ done
 
 wine_loader="$staging_runtime/lib/wine/x86_64-unix/wine"
 wineserver="$staging_runtime/bin/wineserver"
+for media_bridge in winegstreamer.so winedmo.so; do
+  if [[ ! -f "$staging_runtime/lib/wine/x86_64-unix/$media_bridge" ]]; then
+    echo "Missing Wine multimedia bridge: $media_bridge" >&2
+    exit 1
+  fi
+done
+python3 "$ROOT_DIR/script/stage-media.py" --sdk "$media_sdk" --runtime "$staging_runtime"
 if [[ ! -x "$wine_loader" || ! -x "$wineserver" ]]; then
   echo "Wine install layout is incomplete; expected:" >&2
   echo "  $wine_loader" >&2
@@ -496,8 +548,5 @@ if [[ -n "$runtime_codesign_identity" ]]; then
 fi
 
 echo "Creating candidate archive: $output_path"
-/usr/bin/tar -cJf "$output_path" -C "$staging_parent" "$RUNTIME_ROOT"
-candidate_sha="$(/usr/bin/shasum -a 256 "$output_path" | /usr/bin/awk '{print $1}')"
-echo "Candidate ready: $output_path"
-echo "SHA-256: $candidate_sha"
-write_release_manifest "$output_path" "$candidate_sha"
+python3 "$ROOT_DIR/script/package-media-runtime.py" \
+  --runtime "$staging_runtime" --output "$output_path"

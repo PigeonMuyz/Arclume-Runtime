@@ -1,0 +1,119 @@
+{
+  "schemaVersion": 1,
+  "architecture": "x86_64",
+  "deploymentTarget": "10.15",
+  "dependencies": [
+    {
+      "id": "pcre2",
+      "version": "10.48",
+      "archive": "pcre2-10.48.tar.gz",
+      "url": "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.48/pcre2-10.48.tar.gz",
+      "sha256": "ebcc25aadf2a51fa1fefa9b8bc9e7a79b3dae86870a0f1152a22e42befd46888"
+    },
+    {
+      "id": "libffi",
+      "version": "3.8.0",
+      "archive": "libffi-3.8.0.tar.gz",
+      "url": "https://github.com/libffi/libffi/releases/download/v3.8.0/libffi-3.8.0.tar.gz",
+      "sha256": "7da3e2d9a171eb0a038f592ecad3ff2bb2550f3496d87b3b29ad0cf4430c0db4"
+    },
+    {
+      "id": "proxy-libintl",
+      "version": "0.5",
+      "archive": "proxy-libintl-0.5.tar.gz",
+      "url": "https://github.com/frida/proxy-libintl/archive/refs/tags/0.5.tar.gz",
+      "sha256": "f7a1cbd7579baaf575c66f9d99fb6295e9b0684a28b095967cfda17857595303"
+    },
+    {
+      "id": "glib",
+      "version": "2.88.3",
+      "archive": "glib-2.88.3.tar.xz",
+      "url": "https://download.gnome.org/sources/glib/2.88/glib-2.88.3.tar.xz",
+      "sha256": "ab24d24e698dfa1e408b7bcdb508f4aafc906185a8b8ce72fdf79bbbdc9b383b"
+    },
+    {
+      "id": "orc",
+      "version": "0.4.44",
+      "archive": "orc-0.4.44.tar.xz",
+      "url": "https://gstreamer.freedesktop.org/src/orc/orc-0.4.44.tar.xz",
+      "sha256": "4aeb97aea2b58224029dc2b23d7d064cfa990cb4fb8c4da440bcbe9c95bc5d2d"
+    },
+    {
+      "id": "libogg",
+      "version": "1.3.6",
+      "archive": "libogg-1.3.6.tar.gz",
+      "url": "https://downloads.xiph.org/releases/ogg/libogg-1.3.6.tar.gz",
+      "sha256": "83e6704730683d004d20e21b8f7f55dcb3383cdf84c0daedf30bde175f774638"
+    },
+    {
+      "id": "libvorbis",
+      "version": "1.3.7",
+      "archive": "libvorbis-1.3.7.tar.xz",
+      "url": "https://downloads.xiph.org/releases/vorbis/libvorbis-1.3.7.tar.xz",
+      "sha256": "b33cc4934322bcbf6efcbacf49e3ca01aadbea4114ec9589d1b1e9d20f72954b"
+    },
+    {
+      "id": "nasm",
+      "version": "3.02",
+      "archive": "nasm-3.02-macosx.zip",
+      "url": "https://www.nasm.us/pub/nasm/releasebuilds/3.02/macosx/nasm-3.02-macosx.zip",
+      "sha256": "4c1bbb09853f5f5ffc9b7832cbc9366c4761bc79ce7ffb148b0e427e5f3fa114"
+    },
+    {
+      "id": "dav1d",
+      "version": "1.5.3",
+      "archive": "dav1d-1.5.3.tar.xz",
+      "url": "https://download.videolan.org/pub/videolan/dav1d/1.5.3/dav1d-1.5.3.tar.xz",
+      "sha256": "732010aa5ef461fa93355ed2c6c5fedb48ddc4b74e697eaabe8907eaeb943011"
+    },
+    {
+      "id": "ffmpeg",
+      "version": "7.1.5",
+      "archive": "ffmpeg-7.1.5.tar.xz",
+      "url": "https://ffmpeg.org/releases/ffmpeg-7.1.5.tar.xz",
+      "sha256": "de668509caf9e35e3cd162473441fdb29538c6d96ed080292b3cf9e6fc5d558f"
+    },
+    {
+      "id": "gstreamer",
+      "version": "1.28.7",
+      "archive": "gstreamer-1.28.7.tar.xz",
+      "url": "https://gstreamer.freedesktop.org/src/gstreamer/gstreamer-1.28.7.tar.xz",
+      "sha256": "787329b2c5758e228a71d926a6dcf960bceaacca3cadd63874ba665dfcda013e"
+    },
+    {
+      "id": "gst-plugins-base",
+      "version": "1.28.7",
+      "archive": "gst-plugins-base-1.28.7.tar.xz",
+      "url": "https://gstreamer.freedesktop.org/src/gst-plugins-base/gst-plugins-base-1.28.7.tar.xz",
+      "sha256": "ed6e5410f496d171818763af2265e7977154bc7f9b827e98acf8c5bed21dd5a7"
+    },
+    {
+      "id": "gst-plugins-good",
+      "version": "1.28.7",
+      "archive": "gst-plugins-good-1.28.7.tar.xz",
+      "url": "https://gstreamer.freedesktop.org/src/gst-plugins-good/gst-plugins-good-1.28.7.tar.xz",
+      "sha256": "87256969c82cf3bc8574301f3e7044a90de0ac500a5a27d8ba38c4dde894dd8b"
+    },
+    {
+      "id": "gst-plugins-bad",
+      "version": "1.28.7",
+      "archive": "gst-plugins-bad-1.28.7.tar.xz",
+      "url": "https://gstreamer.freedesktop.org/src/gst-plugins-bad/gst-plugins-bad-1.28.7.tar.xz",
+      "sha256": "dc525383c18b2c265bbe6a43d498656cd918aaa130aa4e3abeabcdaa741c3ffe"
+    },
+    {
+      "id": "gst-plugins-ugly",
+      "version": "1.28.7",
+      "archive": "gst-plugins-ugly-1.28.7.tar.xz",
+      "url": "https://gstreamer.freedesktop.org/src/gst-plugins-ugly/gst-plugins-ugly-1.28.7.tar.xz",
+      "sha256": "2b681170ddc22b6b283cafeed48f427c30a17056974a6a9ed137c354e0f7730c"
+    },
+    {
+      "id": "gst-libav",
+      "version": "1.28.7",
+      "archive": "gst-libav-1.28.7.tar.xz",
+      "url": "https://gstreamer.freedesktop.org/src/gst-libav/gst-libav-1.28.7.tar.xz",
+      "sha256": "58da51dd39ecf1cf6faade34cc6412001be2e2e145bca8ae0f45336f60a36ab2"
+    }
+  ]
+}

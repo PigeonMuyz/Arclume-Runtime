@@ -111,7 +111,7 @@ jobs:
 
       - name: 安装构建依赖
         run: |
-          brew install bison mingw-w64 freetype
+          brew install bison mingw-w64 freetype python meson ninja pkg-config ffmpeg
           echo "$(brew --prefix bison)/bin" >> "$GITHUB_PATH"
           "$(brew --prefix bison)/bin/bison" --version
           x86_64-w64-mingw32-strip --version
@@ -160,6 +160,15 @@ jobs:
           test -f "$baseline_dir/arclume-wine-$BASELINE_VERSION-x86_64.tar.xz"
           echo "BASELINE_ARCHIVE=$baseline_dir/arclume-wine-$BASELINE_VERSION-x86_64.tar.xz" >> "$GITHUB_ENV"
 
+      - name: 初始化多媒体解码报告
+        if: always()
+        run: |
+          set -euo pipefail
+          decode_report_dir="$RUNNER_TEMP/arclume-runtime-media-decode"
+          mkdir -p "$decode_report_dir"
+          jq -n '{schema_version: 1, summary: {overall: "incomplete", pass: 0, fail: 0, skip: 0, preflight_errors: ["Candidate runtime was not available for decode validation"]}, results: []}' \
+            > "$decode_report_dir/media-decode-report.json"
+
       - name: 构建并校验候选 Runtime
         id: build
         env:
@@ -193,16 +202,45 @@ jobs:
           actual_sha=$(shasum -a 256 "$archive" | awk '{print $1}')
           manifest_sha=$(jq -r '.archive.sha256' "$manifest")
           test "$actual_sha" = "$manifest_sha"
-          tar -tJf "$archive" | grep -q '^arclume-wine-runtime-x86_64/lib/wine/x86_64-unix/ntdll.so$'
-          runtime_verify_dir="$RUNNER_TEMP/arclume-runtime-signature-check"
-          rm -rf "$runtime_verify_dir"
-          mkdir -p "$runtime_verify_dir"
+          tar -tJf "$archive" | grep '^arclume-wine-runtime-x86_64/lib/wine/x86_64-unix/ntdll.so$' >/dev/null
+          runtime_verify_dir=$(mktemp -d "$RUNNER_TEMP/arclume-runtime-signature-check.XXXXXX")
           tar -xJf "$archive" -C "$runtime_verify_dir"
           wine_loader="$runtime_verify_dir/arclume-wine-runtime-x86_64/lib/wine/x86_64-unix/wine"
           codesign --verify --deep --strict --verbose=2 "$wine_loader"
           codesign --display --entitlements :- "$wine_loader" 2> "$runtime_verify_dir/wine.entitlements.plist"
           /usr/libexec/PlistBuddy -c 'Print :com.apple.security.device.audio-input' \
             "$runtime_verify_dir/wine.entitlements.plist" | grep -qx 'true'
+
+          decode_report_dir="$RUNNER_TEMP/arclume-runtime-media-decode"
+          decode_report="$decode_report_dir/media-decode-report.json"
+          decode_run_dir="$decode_report_dir/run"
+          fixture_ffmpeg="$(brew --prefix ffmpeg)/bin/ffmpeg"
+          decode_status=0
+          python3 script/test-media-decode.py \
+            --runtime "$runtime_verify_dir/arclume-wine-runtime-x86_64" \
+            --output-dir "$decode_run_dir" \
+            --fixture-ffmpeg "$fixture_ffmpeg" \
+            --timeout 60 || decode_status=$?
+
+          run_report="$decode_run_dir/media-decode-report.json"
+          if [ -s "$run_report" ]; then
+            cp "$run_report" "$decode_report"
+          else
+            jq -n --arg error "test-media-decode.py exited with status $decode_status before writing its report" \
+              '{schema_version: 1, summary: {overall: "fail", pass: 0, fail: 1, skip: 0, preflight_errors: [$error]}, results: []}' \
+              > "$decode_report"
+          fi
+
+          if [ "$decode_status" -ne 0 ]; then
+            echo "Candidate media decode suite exited with status $decode_status." >&2
+            exit 1
+          fi
+          if ! jq -e '.summary.overall == "pass" and .summary.fail == 0 and .summary.skip == 0 and (.results | length > 0) and all(.results[]; .status == "pass")' \
+            "$decode_report" >/dev/null; then
+            echo "Candidate media decode suite failed or skipped one or more cases; refusing publication." >&2
+            exit 1
+          fi
+
           printf '%s  %s\n' "$actual_sha" "$(basename "$archive")" > "$archive.sha256"
 
           {
@@ -210,6 +248,23 @@ jobs:
             echo "manifest=$manifest"
             echo "checksum=$archive.sha256"
           } >> "$GITHUB_OUTPUT"
+
+      - name: 上传多媒体解码报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Arclume-Wine-Media-Decode-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/arclume-runtime-media-decode/media-decode-report.json
+          if-no-files-found: error
+
+      - name: 打包对应源码
+        id: sources
+        run: |
+          set -euo pipefail
+          source runtime.env
+          sources="$RUNNER_TEMP/arclume-runtime-release/arclume-wine-$RUNTIME_VERSION-sources.tar.gz"
+          bash script/package-runtime-sources.sh --output "$sources"
+          echo "archive=$sources" >> "$GITHUB_OUTPUT"
 
       - name: 保存 Runtime 构建产物
         uses: actions/upload-artifact@v4
@@ -219,6 +274,7 @@ jobs:
             ${{ steps.build.outputs.archive }}
             ${{ steps.build.outputs.manifest }}
             ${{ steps.build.outputs.checksum }}
+            ${{ steps.sources.outputs.archive }}
           if-no-files-found: error
 
       - name: 发布 GitHub Release
@@ -230,6 +286,7 @@ jobs:
           ARCHIVE: ${{ steps.build.outputs.archive }}
           MANIFEST: ${{ steps.build.outputs.manifest }}
           CHECKSUM: ${{ steps.build.outputs.checksum }}
+          SOURCES: ${{ steps.sources.outputs.archive }}
         run: |
           set -euo pipefail
           archive_sha=$(awk '{print $1}' "$CHECKSUM")
@@ -241,6 +298,9 @@ jobs:
             "- Wine：11.0（CrossOver 26.3.0 FOSS source）" \
             "- 补丁集：$PATCHSET（FineWine / Endfield，23 个 LGPL-2.1-or-later 补丁）" \
             "- 保持现有 Runtime ABI 和 Games 容器 ABI。" \
+            "- 新增 GStreamer 1.28.7、FFmpeg 7.1.5、dav1d 1.5.3；修复 AV1 输出与 MJPEG 解析。" \
+            "- 归档内 FFmpeg / GStreamer 命令行解码矩阵通过；游戏内播放需另行验证。" \
+            "- 已知问题：YY 麦序模式仍可能无响应。" \
             "" \
             "源码与声明：" \
             "- Runtime source：https://github.com/PigeonMuyz/Arclume-Runtime/tree/$TAG" \
@@ -264,7 +324,8 @@ jobs:
           fi
 
           gh release upload "$TAG" \
-            "$ARCHIVE" "$MANIFEST" "$CHECKSUM" \
+            "$ARCHIVE" "$MANIFEST" "$CHECKSUM" "$SOURCES" \
+            "$RUNNER_TEMP/arclume-runtime-media-decode/media-decode-report.json" \
             --repo "$GITHUB_REPOSITORY" \
             --clobber
           if [ "$CHANNEL" = "prerelease" ]; then

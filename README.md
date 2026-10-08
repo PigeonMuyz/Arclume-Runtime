@@ -43,17 +43,19 @@ from reading an App checkout and makes the dependency auditable.
   --base-archive /absolute/path/to/known-good-runtime.tar.xz
 ```
 
-For an App-side integration release that does not rebuild Wine:
+Version 1.1.3 also builds pinned x86_64 GStreamer, FFmpeg
+and dav1d dependencies. `--repackage` is disabled for this runtime so an old
+Wine core without multimedia bridges cannot be relabelled as the new version.
+See [multimedia build and headless validation](docs/media-runtime.md) for tools,
+low-priority builds, isolation, compatibility and rollback instructions.
 
-```bash
-./script/build-runtime.sh --repackage \
-  --base-archive /absolute/path/to/known-good-runtime.tar.xz
-```
-
-Both commands produce an archive and a SHA-256-bound manifest in `dist/`.
-Candidate artifacts are ignored by Git. Promote a tested artifact to the
-matching public GitHub Release only after launch and game validation, and keep
-the source tag and third-party notices linked beside the binary.
+The build produces an archive and a SHA-256-bound manifest in `dist/`.
+Candidate artifacts are ignored by Git. Release notes distinguish headless
+decode validation from real-game and target-OS validation. Keep the source tag
+and third-party notices linked beside the binary. After committing the release
+sources, `bash script/package-runtime-sources.sh --output dist/arclume-wine-1.1.3-sources.tar.gz`
+packages that exact commit plus the SHA-256-verified Wine/media input archives.
+It excludes build trees, signing material and user data.
 
 ## GitHub Actions
 

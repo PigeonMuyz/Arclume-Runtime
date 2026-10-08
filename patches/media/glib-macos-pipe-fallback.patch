@@ -1,0 +1,12 @@
+--- a/meson.build
++++ b/meson.build
+@@ -751,7 +751,8 @@
+   'memmem',
+   'mmap',
+   'newlocale',
+-  'pipe2',
++  # The macOS 27 SDK exports pipe2, but our deployment target does not.
++  # Keep GLib's portable pipe + fcntl implementation for translated hosts.
+   'poll',
+   'prlimit',
+   'readlink',

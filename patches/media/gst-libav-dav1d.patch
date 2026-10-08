@@ -1,0 +1,30 @@
+--- a/ext/libav/gstavviddec.c
++++ b/ext/libav/gstavviddec.c
+@@ -2059,6 +2059,16 @@
+   GST_LOG_OBJECT (ffmpegdec, "Got frame from ffmpeg, sfn # %"
+       G_GUINT32_FORMAT, output_frame->system_frame_number);
+ 
++  /* libdav1d allocates its AVFrames internally and does not request a
++   * GstVideoDecoder buffer through get_buffer2(). The input frame was
++   * therefore marked decode-only in handle_frame() and never had that flag
++   * cleared by get_buffer2(), even though this decoded output frame is valid. */
++  if (ffmpegdec->context->codec &&
++      !strcmp (ffmpegdec->context->codec->name, "libdav1d")) {
++    GST_VIDEO_CODEC_FRAME_FLAG_UNSET (output_frame,
++        GST_VIDEO_CODEC_FRAME_FLAG_DECODE_ONLY);
++  }
++
+   /* also give back a buffer allocated by the frame, if any */
+   if (out_dframe) {
+     gst_buffer_replace (&output_frame->output_buffer, out_dframe->buffer);
+@@ -3023,7 +3033,9 @@
+     /* No decoders depending on external libraries (we don't build them, but
+      * people who build against an external ffmpeg might have them.
+      * We have native gstreamer plugins for all of those libraries anyway. */
+-    if (!strncmp (in_plugin->name, "lib", 3)) {
++    /* Arclume ships a pinned software dav1d with FFmpeg, not a Rust plugin. */
++    if (!strncmp (in_plugin->name, "lib", 3) &&
++        strcmp (in_plugin->name, "libdav1d")) {
+       GST_DEBUG
+           ("Not using external library decoder %s. Use the gstreamer-native ones instead.",
+           in_plugin->name);
