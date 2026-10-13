@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.arclume.runtime.wine",
   "displayName": "Arclume Wine",
-  "version": "1.1.3",
+  "version": "1.1.4",
   "channel": "stable",
   "runtimeABI": 1,
   "prefixABI": "arclume-jx3-prefix-1",
@@ -21,8 +21,8 @@
     "locale": "zh_CN",
     "fineWinePatchSet": {
       "name": "Endfield_FineWine",
-      "revision": "e5d4ccad235eefe32d912733e57e4c0bb53a5b58",
-      "patchCount": 23
+      "revision": "eb11be4a4bf2bb1ab27374f3bcfa408426297b32",
+      "patchCount": 24
     }
   },
   "notes": [

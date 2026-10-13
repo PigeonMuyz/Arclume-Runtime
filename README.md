@@ -53,9 +53,13 @@ The build produces an archive and a SHA-256-bound manifest in `dist/`.
 Candidate artifacts are ignored by Git. Release notes distinguish headless
 decode validation from real-game and target-OS validation. Keep the source tag
 and third-party notices linked beside the binary. After committing the release
-sources, `bash script/package-runtime-sources.sh --output dist/arclume-wine-1.1.3-sources.tar.gz`
+sources, `bash script/package-runtime-sources.sh --output dist/arclume-wine-1.1.4-sources.tar.gz`
 packages that exact commit plus the SHA-256-verified Wine/media input archives.
 It excludes build trees, signing material and user data.
+
+Version 1.1.4 rebuilds Wine with the FineWine msync thread-exit fix (24 Wine
+patches total), retaining 1.1.3 multimedia dependencies and the existing
+Runtime / Prefix ABI. Nefinita is not modified.
 
 ## GitHub Actions
 

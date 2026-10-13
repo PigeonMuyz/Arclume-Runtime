@@ -94,5 +94,6 @@ source_marker="work/wine/.arclume-patchset"
 grep -q 'PsGetProcessImageFileName' work/wine/dlls/ntoskrnl.exe/ntoskrnl.c
 grep -q 'is_privileged_instr' work/wine/dlls/ntdll/unix/signal_x86_64.c
 grep -q 'KiUserApcDispatcher' work/wine/dlls/kernel32/module.c
+grep -q 'if (!do_msync()) close( ntdll_get_thread_data()->alert_fd );' work/wine/dlls/ntdll/unix/thread.c
 
 echo "Runtime preflight passed: Arclume Wine $RUNTIME_VERSION, FineWine $FINEWINE_PATCHSET_REVISION."

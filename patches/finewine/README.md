@@ -1,8 +1,8 @@
 # FineWine / Endfield compatibility patch set
 
-This directory vendors the 23 Wine patches from
+This directory vendors the 24 Wine patches from
 [stoicswe/Endfield_FineWine](https://github.com/stoicswe/Endfield_FineWine)
-at commit `e5d4ccad235eefe32d912733e57e4c0bb53a5b58`.
+at commit `eb11be4a4bf2bb1ab27374f3bcfa408426297b32` (2026-10-10).
 
 The upstream project authored its two macOS/Rosetta signal fixes and ports the
 remaining ACE compatibility patches from dw-proton. The patches target Wine
@@ -16,10 +16,17 @@ NelloKudo and other dw-proton contributors.
   instruction faults.
 - `ntoskrnl.exe` exports and compatibility backports required by ACE.
 - Endfield-gated `KiUser*Dispatcher` handling and a timing compatibility fix.
+- The msync thread-exit fix: the server-owned alert index is not a Unix file
+  descriptor and must not be passed to `close()` while msync is active.
 
 The patch set is used by Arclume Wine 1.1.0 and later. It was checked against
-the locked CrossOver 26.3.0 / Wine 11.0 source on 2026-08-21: all 23 patches
+the locked CrossOver 26.3.0 / Wine 11.0 source: all 24 patches
 apply in the order listed in `PATCH_ORDER`.
+
+Only the Wine patch set is imported. The upstream MoltenVK/SPIRV-Cross patches
+require a separate graphics-library build and are not included here. CrossOver
+app rebranding, helper archives and patcher UI scripts are also out of scope.
+This source change does not replace the published 1.1.3 archive or its manifest.
 
 `PATCHES.sha256` preserves the exact imported patch bytes. The source-sync
 script verifies it before applying anything. Keep both this attribution and

@@ -1,5 +1,6 @@
 7e3b59d4d59798fdfae4b12ea871bee6707f16dc55b770d23b130052135f5037  patches/stage1-macos/0000-build-fix-win32u-vulkan-soname-fallback.patch
 d3a164d2c853d6b6b8bda26bb964252f3519ef317a62098edd0991cd45bea3ae  patches/stage1-macos/0001-macos-rosetta-signal-fixes-nop-and-privinstr.patch
+9bdd456a106b7f2ade84248ca09f59f8d066387d363dd1934fb09ce97c2595e9  patches/stage1-macos/0004-ntdll-don-t-close-the-msync-alert-index-on-thread-exit.patch
 813511656aebf6431dc431bb05da4b0b09edc6f2c53ddc9611efcaef5d94686e  patches/stage2-dwproton/em-backports/0001-ntoskrnl.exe-Implement-KeAcquireGuardedMutex.patch
 9729ae27fb1353c418b1900c76ac1594e8bb88507df98bbe5840dd59a946d2d5  patches/stage2-dwproton/em-backports/0002-ntoskrnl.exe-Implement-KeReleaseGuardedMutex.patch
 067c55027738274d6df5055489716318a4936c4734ea21f1e3ebbc8573faf5d9  patches/stage2-dwproton/em-backports/0003-ntoskrnl-Implement-PsGetProcessSessionId.patch

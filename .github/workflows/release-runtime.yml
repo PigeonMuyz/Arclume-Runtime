@@ -290,13 +290,14 @@ jobs:
         run: |
           set -euo pipefail
           archive_sha=$(awk '{print $1}' "$CHECKSUM")
+          source sources/FINEWINE_PATCHSET.lock
           notes=$(printf '%s\n' \
             "由 GitHub Actions 的 macos-26 runner 从锁定的 CodeWeavers Wine 源码构建。" \
             "" \
             "- Arclume Wine：$VERSION" \
             "- 发布通道：$CHANNEL" \
             "- Wine：11.0（CrossOver 26.3.0 FOSS source）" \
-            "- 补丁集：$PATCHSET（FineWine / Endfield，23 个 LGPL-2.1-or-later 补丁）" \
+            "- 补丁集：$PATCHSET（FineWine / Endfield，$FINEWINE_PATCHSET_PATCH_COUNT 个 LGPL-2.1-or-later 补丁）" \
             "- 保持现有 Runtime ABI 和 Games 容器 ABI。" \
             "- 新增 GStreamer 1.28.7、FFmpeg 7.1.5、dav1d 1.5.3；修复 AV1 输出与 MJPEG 解析。" \
             "- 归档内 FFmpeg / GStreamer 命令行解码矩阵通过；游戏内播放需另行验证。" \
@@ -304,7 +305,7 @@ jobs:
             "" \
             "源码与声明：" \
             "- Runtime source：https://github.com/PigeonMuyz/Arclume-Runtime/tree/$TAG" \
-            "- FineWine 来源：https://github.com/stoicswe/Endfield_FineWine/tree/e5d4ccad235eefe32d912733e57e4c0bb53a5b58" \
+            "- FineWine 来源：https://github.com/stoicswe/Endfield_FineWine/tree/$FINEWINE_PATCHSET_REVISION" \
             "- 第三方声明：https://github.com/PigeonMuyz/Arclume-Runtime/blob/$TAG/THIRD-PARTY-NOTICES.md" \
             "" \
             "Runtime SHA-256：$archive_sha")
